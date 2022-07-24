@@ -1,2 +1,2 @@
-# Mass-Email-Unsubscriber
-An application that fetches emails from your inbox and attempts to unsubscribe from the sender
+# Mass Email Unsubscriber
+Attempts to de-clutter your email and improve productivity by unsubscribing you dreaded email lists.
