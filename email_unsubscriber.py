@@ -24,7 +24,10 @@ class EmailUnsubscriber:
         "opt out",
         "if you no longer wish to receive this email",
     ]
-    SUPPORTED_IMAP_SERVERS = {"yahoo": "imap.mail.yahoo.com"}
+    SUPPORTED_IMAP_SERVERS = {
+        "yahoo": "imap.mail.yahoo.com",
+        "google": "imap.gmail.com",
+    }
 
     def __init__(self, email_type: str) -> None:
         """Connect to the email's imap server by email_type.
@@ -355,7 +358,7 @@ class EmailUnsubscriber:
             for emailer in self.unsubscriber_info:
 
                 # If this emailer has unsubscribe links go through and try each link. If we encounter a '200 OK'
-                # status set the text response as a new key in the unsubscriber_info dictionary.
+                # write the response as an html file in unsubscribe_response/<emailer>.
                 self.unsubscribe_and_write_response(unsubscribe_from, emailer)
 
         else:
@@ -380,7 +383,6 @@ class EmailUnsubscriber:
             print(
                 f"\nAttempting to unsubscribe from: {unsubscribe_from}\nLinks found in email: {email.get('subject')}"
             )
-
             for idx, link in enumerate(email["links"]):
                 print(f"Trying link: {link}")
                 res = requests.get(link)
