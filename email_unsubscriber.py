@@ -10,6 +10,8 @@ from email.header import decode_header
 from email.message import Message
 from email.header import Header
 from imaplib import IMAP4_SSL
+from texttable import Texttable
+from printer import print_error, print_success, print_warning
 from typing import DefaultDict, List, Tuple
 
 
@@ -73,7 +75,7 @@ class EmailUnsubscriber:
             r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", email_username
         ):
             # Return early if email is in the incorrect format.
-            print(f"Email: '{email_username}' not in correct format")
+            print_error(f"Email: '{email_username}' not in correct format")
             return False
 
         # NOTE: Can raise Exception if email_username and password is incorrect.
@@ -154,7 +156,7 @@ class EmailUnsubscriber:
 
         # Close the INBOX
         self.imap.close()
-        print("Done fetching emails!")
+        print_success("Done fetching emails!")
 
     @staticmethod
     def decode_from_and_subject(
@@ -225,7 +227,7 @@ class EmailUnsubscriber:
                             "utf-8", errors="ignore"
                         )
                     except Exception as e:
-                        print(
+                        print_warning(
                             f"Was unable to decode body for email: {email_subject}\nError: {e}"
                         )
                         continue
@@ -240,7 +242,7 @@ class EmailUnsubscriber:
                             "utf-8", errors="ignore"
                         )
                     except Exception as e:
-                        print(
+                        print_warning(
                             f"Was unable to decode body for email: {email_subject}\nError: {e}"
                         )
                         continue
@@ -365,7 +367,7 @@ class EmailUnsubscriber:
             emailer = self.unsubscriber_info.get(unsubscribe_from, [])
 
             if not emailer:
-                print(f"{unsubscribe_from} does not exist.")
+                print_warning(f"{unsubscribe_from} does not exist.")
                 return
 
             self.unsubscribe_and_write_response(unsubscribe_from, emailer)
@@ -405,10 +407,34 @@ class EmailUnsubscriber:
         # TODO
         pass
 
-    def print_unsubscribe_info(self) -> None:
-        """Prints the unsubscribe info neatly."""
-        for emailer in self.unsubscriber_info:
-            print(f"\n\nSender: {emailer}")
-            for emails in self.unsubscriber_info[emailer]:
-                print(f"Subject: {emails.get('subject')}")
-                print(f"Unsubscribe Links Found:\n{emails.get('links')}")
+    def print_unsubscribe_info(self, verbose: bool = False) -> None:
+        """Prints the unsubscribe info neatly.
+
+        Args:
+            verbose (bool): If True also prints the subject of the email and the links found.
+        """
+        table = Texttable()
+
+        if verbose:
+            table.add_row(["number", "sender", "subject", "link"])
+            table.set_cols_width([8, 30, 40, 70])
+
+        else:
+            table.add_row(["number", "sender"])
+
+        for idx, emailer in enumerate(self.unsubscriber_info):
+            idx += 1
+
+            if verbose:
+                for emails in self.unsubscriber_info[emailer]:
+                    table.add_row(
+                        [
+                            idx,
+                            emailer,
+                            emails.get("subject", ""),
+                            emails.get("links", ""),
+                        ]
+                    )
+            else:
+                table.add_row([idx, emailer])
+        print(table.draw())
