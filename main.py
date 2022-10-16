@@ -58,7 +58,7 @@ if __name__ == "__main__":
             email_unsubscriber.print_unsubscribe_info()
         elif choice == "4":
             email_unsubscriber.print_unsubscribe_info(verbose=True)
-        if choice == "5":
+        elif choice == "5":
             break
 
     print_success("\nGoodbye!")
