@@ -5,14 +5,13 @@ import re
 import requests
 import lxml.html
 
-from collections import defaultdict
 from email.header import decode_header
 from email.message import Message
 from email.header import Header
 from imaplib import IMAP4_SSL
 from texttable import Texttable
 from printer import print_error, print_success, print_warning, print_progress
-from typing import DefaultDict, List, Tuple
+from typing import List, Tuple, Union
 
 
 class EmailUnsubscriber:
@@ -49,7 +48,7 @@ class EmailUnsubscriber:
         imap_server = self.SUPPORTED_IMAP_SERVERS[email_type]
         self.imap = IMAP4_SSL(imap_server)
 
-        self.unsubscriber_info: DefaultDict[str, List[dict]] = defaultdict(list)
+        self.unsubscriber_info: List[dict] = []
 
     def __del__(self) -> None:
         """Disconnect from the imap server upon calling the destructor."""
@@ -157,8 +156,12 @@ class EmailUnsubscriber:
             )
 
             if unsubscribe_links:
-                self.unsubscriber_info[email_from].append(
-                    {"subject": email_subject, "links": unsubscribe_links}
+                self.unsubscriber_info.append(
+                    {
+                        "subject": email_subject,
+                        "links": unsubscribe_links,
+                        "from": email_from,
+                    }
                 )
             current_iteration += 1
             print_progress(
@@ -361,13 +364,16 @@ class EmailUnsubscriber:
 
         return unsubscribe_links
 
-    def unsubscribe_from_emails_with_links(self, unsubscribe_from: str = "all") -> None:
+    def unsubscribe_from_emails_with_links(
+        self, unsubscribe_from: Union[str, int] = "all", range: tuple = None
+    ) -> None:
         """Try to unsubscribe from getting emails by sending a GET request to
-        the unsubscribe_links. Stores the response of each request in the
-        `self.unsubscriber_info` dictionary.
+        the unsubscribe_links.
 
         Args:
-            unsubscribe_from (str, optional): A sender to unsubscribe from. Defaults to 'all'.
+            unsubscribe_from ([str, int], optional): A sender to unsubscribe from. Defaults to 'all'.
+                Can also be the number of emailer to unsubscribe from.
+            range(tuple, optional): A range of indices of emailers to unsubscribe from.
         """
 
         if unsubscribe_from == "all":
@@ -375,44 +381,63 @@ class EmailUnsubscriber:
 
                 # If this emailer has unsubscribe links go through and try each link. If we encounter a '200 OK'
                 # write the response as an html file in unsubscribe_response/<emailer>.
-                self.unsubscribe_and_write_response(unsubscribe_from, emailer)
+                self.unsubscribe_and_write_response(emailer)
+            self.unsubscriber_info.clear()
 
-        else:
-            emailer = self.unsubscriber_info.get(unsubscribe_from, [])
+        # User has selected a range of emailers to unsubscribe from.
+        elif range is not None and len(range) == 2:
 
-            if not emailer:
-                print_warning(f"{unsubscribe_from} does not exist.")
+            if range[0] > range[1]:
+                print_error(
+                    f"First range arg: {range[0]} should be greater than second range arg: {range[1]}"
+                )
                 return
 
-            self.unsubscribe_and_write_response(unsubscribe_from, emailer)
+            elif range[1] > len(self.unsubscriber_info):
+                print_error(f"Range arg: {range[1]} out of range!")
+                return
 
-    def unsubscribe_and_write_response(
-        self, unsubscribe_from: str, emailer: List[dict]
-    ) -> None:
+            for emailer in self.unsubscriber_info[range[0] : range[1]]:
+                self.unsubscribe_and_write_response(emailer)
+
+            del self.unsubscriber_info[range[0] : range[1]]
+
+        # User has selected a single emailer to unsubscribe from.
+        else:
+
+            if unsubscribe_from > len(self.unsubscriber_info):
+                print_error(f"Range arg: {unsubscribe_from} out of range!")
+                return
+
+            self.unsubscribe_and_write_response(
+                self.unsubscriber_info[unsubscribe_from]
+            )
+
+            # Remove this emailer since we've already unsubscribed from it.
+            del self.unsubscriber_info[unsubscribe_from]
+
+    def unsubscribe_and_write_response(self, emailer: dict) -> None:
         """Unsubscribes from emails and writes the html responses.
 
         Args:
-            unsubscribe_from (str): The emailer we're attempting to unsubscribe from.
-            emailer (List[dict]): A list of dictionaries containing emails and unsubscribe links.
+            emailer (dict): A dictionary containing the emailer info and unsubscribe links.
         """
-        for email in emailer:
-            print(
-                f"\nAttempting to unsubscribe from: {unsubscribe_from}\nLinks found in email: {email.get('subject')}"
-            )
-            for idx, link in enumerate(email["links"]):
-                print(f"Trying link: {link}")
-                res = requests.get(link)
+        emailer_name = emailer.get("from", "")
+        print(
+            f"\nAttempting to unsubscribe from: {emailer_name}\nLinks found in email: {emailer.get('subject')}"
+        )
+        for idx, link in enumerate(emailer.get("links", [])):
+            print(f"Trying link: {link}")
+            res = requests.get(link)
 
-                if res.status_code == 200:
-                    # Write the response as an html file.
-                    path = f"unsubscribe_response/{unsubscribe_from}"
-                    if not os.path.isdir(path):
-                        os.makedirs(path)
-                    with open(f"{path}/{email['subject']}{idx}.html", "w") as f:
-                        f.write(res.text)
-                    print(f"Wrote response as an HTML file to {path}")
-
-        del self.unsubscriber_info[unsubscribe_from]
+            if res.status_code == 200:
+                # Write the response as an html file.
+                path = f"unsubscribe_response/{emailer_name}"
+                if not os.path.isdir(path):
+                    os.makedirs(path)
+                with open(f"{path}/{emailer['subject']}{idx}.html", "w") as f:
+                    f.write(res.text)
+                print_success(f"Wrote response as an HTML file to {path}")
 
     def set_unsubscribe_link_confidence(self):
         """Method to set the confidence level of an unsubscribe link.
@@ -429,8 +454,9 @@ class EmailUnsubscriber:
         """
         table = Texttable()
 
+        # Create the header
         if verbose:
-            table.add_row(["number", "sender", "subject", "link"])
+            table.add_row(["number", "sender", "subject", "link(s)"])
             table.set_cols_width([8, 30, 40, 70])
 
         else:
@@ -440,15 +466,14 @@ class EmailUnsubscriber:
             idx += 1
 
             if verbose:
-                for emails in self.unsubscriber_info[emailer]:
-                    table.add_row(
-                        [
-                            idx,
-                            emailer,
-                            emails.get("subject", ""),
-                            emails.get("links", ""),
-                        ]
-                    )
+                table.add_row(
+                    [
+                        idx,
+                        emailer.get("from", ""),
+                        emailer.get("subject", ""),
+                        emailer.get("links", ""),
+                    ]
+                )
             else:
-                table.add_row([idx, emailer])
+                table.add_row([idx, emailer.get("from")])
         print(table.draw())
