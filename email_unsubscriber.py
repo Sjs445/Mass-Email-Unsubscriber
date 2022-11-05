@@ -11,7 +11,7 @@ from email.message import Message
 from email.header import Header
 from imaplib import IMAP4_SSL
 from texttable import Texttable
-from printer import print_error, print_success, print_warning
+from printer import print_error, print_success, print_warning, print_progress
 from typing import DefaultDict, List, Tuple
 
 
@@ -130,6 +130,13 @@ class EmailUnsubscriber:
             )
 
         print("Fetching emails...")
+        current_iteration = 0
+        print_progress(
+            current_iteration=current_iteration,
+            total=how_many,
+            prefix="Progress:",
+            suffix="Complete",
+        )
         for i in range(*range_params):
             response, msg = self.imap.fetch(str(i), "(RFC822)")
 
@@ -153,6 +160,13 @@ class EmailUnsubscriber:
                 self.unsubscriber_info[email_from].append(
                     {"subject": email_subject, "links": unsubscribe_links}
                 )
+            current_iteration += 1
+            print_progress(
+                current_iteration=current_iteration,
+                total=how_many,
+                prefix="Progress:",
+                suffix="Complete",
+            )
 
         # Close the INBOX
         self.imap.close()
